@@ -2,7 +2,7 @@ import os
 import httpx
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL = "google/gemini-2.0-flash-001"
+MODEL = "deepseek/deepseek-chat-v3-0324"
 
 def carregar_prompt():
     with open("app/prompt/system_prompt.txt", "r", encoding="utf-8") as f:
