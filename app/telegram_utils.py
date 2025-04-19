@@ -7,8 +7,10 @@ from app.painel import add_chat_message, get_chat_history
 
 load_dotenv()
 
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 SYSTEM_PROMPT = "Assistente."
 SYSTEM_PROMPT_FILE = "system_prompt.txt"
+
 if os.path.exists(SYSTEM_PROMPT_FILE):
     with open(SYSTEM_PROMPT_FILE, encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read().strip()
@@ -19,6 +21,7 @@ async def processar_mensagem_telegram(payload: dict) -> dict:
         mensagem = payload.get("message", {})
         user_info = mensagem.get("from", {})
         texto = mensagem.get("text", "").strip()
+        chat_id = mensagem.get("chat", {}).get("id")
 
         user_id = str(user_info.get("id"))
         nome_usuario = user_info.get("first_name", "amiga")
@@ -39,11 +42,22 @@ async def processar_mensagem_telegram(payload: dict) -> dict:
         # Salva resposta da IA
         add_chat_message(user_id, "assistant", resposta_ia)
 
+        # Envia resposta ao Telegram
+        if BOT_TOKEN and chat_id:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload_envio = {
+                "chat_id": chat_id,
+                "text": resposta_ia
+            }
+            headers = {"Content-Type": "application/json"}
+            requests.post(url, data=json.dumps(payload_envio), headers=headers)
+
         return {
             "user_id": user_id,
             "nome": nome_usuario,
             "mensagem": texto,
             "resposta": resposta_ia
         }
+
     except Exception as e:
         return {"erro": f"Erro ao processar mensagem: {str(e)}"}
