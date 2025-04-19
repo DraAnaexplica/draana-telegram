@@ -1,33 +1,49 @@
 import os
-import httpx
+import requests
+import json
 from dotenv import load_dotenv
+from app.openrouter_utils import gerar_resposta_openrouter
+from app.painel import add_chat_message, get_chat_history
 
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+SYSTEM_PROMPT = "Assistente."
+SYSTEM_PROMPT_FILE = "system_prompt.txt"
+if os.path.exists(SYSTEM_PROMPT_FILE):
+    with open(SYSTEM_PROMPT_FILE, encoding="utf-8") as f:
+        SYSTEM_PROMPT = f.read().strip()
 
-async def processar_mensagem_telegram(payload: dict):
+# Função principal chamada pelo webhook
+async def processar_mensagem_telegram(payload: dict) -> dict:
     try:
         mensagem = payload.get("message", {})
-        texto = mensagem.get("text")
-        chat_id = mensagem.get("chat", {}).get("id")
+        user_info = mensagem.get("from", {})
+        texto = mensagem.get("text", "").strip()
 
-        if not texto or not chat_id:
-            return
+        user_id = str(user_info.get("id"))
+        nome_usuario = user_info.get("first_name", "amiga")
 
-        # Exemplo simples de resposta fixa
-        resposta = f"Oi, aqui é a Dra. Ana 👩‍⚕️. Me conta seu nome e idade pra eu te ajudar direitinho 💗"
+        if not texto:
+            return {"erro": "Mensagem vazia ou não suportada."}
 
-        await enviar_mensagem(chat_id, resposta)
+        # Salva a mensagem do usuário
+        add_chat_message(user_id, "user", texto)
 
+        # Recupera até 20 mensagens anteriores
+        historico = get_chat_history(user_id, limit=20)
+        mensagens_para_ia = [{"role": "system", "content": SYSTEM_PROMPT}] + historico
+
+        # Gera resposta com IA
+        resposta_ia = gerar_resposta_openrouter(mensagens_para_ia)
+
+        # Salva resposta da IA
+        add_chat_message(user_id, "assistant", resposta_ia)
+
+        return {
+            "user_id": user_id,
+            "nome": nome_usuario,
+            "mensagem": texto,
+            "resposta": resposta_ia
+        }
     except Exception as e:
-        print(f"Erro ao processar mensagem do Telegram: {e}")
-
-async def enviar_mensagem(chat_id: int, texto: str):
-    async with httpx.AsyncClient() as client:
-        await client.post(API_URL, json={
-            "chat_id": chat_id,
-            "text": texto
-        })
+        return {"erro": f"Erro ao processar mensagem: {str(e)}"}
