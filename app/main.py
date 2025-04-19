@@ -1,31 +1,41 @@
 from fastapi import FastAPI, Request
-import httpx
 import os
-from app.openrouter_utils import gerar_resposta_openrouter
-from app.telegram_utils import enviar_mensagem_telegram
+import psycopg2
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = FastAPI()
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-@app.post("/webhook")
-async def receber_mensagem(request: Request):
-    payload = await request.json()
+DATABASE_URL = os.getenv("DATABASE_URL")
+CHAVE_SECRETA = os.getenv("TABELA_SECRET", "proteger")
+
+@app.get("/")
+def raiz():
+    return {"mensagem": "API da Dra. Ana - Telegram"}
+
+@app.get("/criar-tabela")
+def criar_tabela(request: Request):
+    chave = request.query_params.get("chave")
+    if chave != CHAVE_SECRETA:
+        return {"erro": "Acesso negado. Chave inválida."}
+
+    sql = """
+    CREATE TABLE IF NOT EXISTS chat_history (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """
     try:
-        message = payload["message"]
-        user_id = message["from"]["id"]
-        nome_usuario = message["from"].get("first_name", "")
-        texto = message.get("text", "")
-
-        print(f"📩 Mensagem recebida de {nome_usuario}: {texto}")
-
-        resposta = gerar_resposta_openrouter(texto)
-
-        await enviar_mensagem_telegram(user_id, resposta)
-
-        return {"status": "mensagem processada"}
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute(sql)
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"status": "✅ Tabela 'chat_history' criada com sucesso no Render"}
     except Exception as e:
-        print(f"Erro ao processar mensagem: {e}")
-        return {"status": "erro", "detalhe": str(e)}
+        return {"erro": str(e)}
